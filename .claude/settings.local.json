@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"import openpyxl; print\\('openpyxl', openpyxl.__version__\\)\")",
+      "Bash(python3 ciclo_531.py)",
+      "Bash(python3 *)",
+      "Bash(rclone version *)",
+      "Bash(rclone listremotes *)",
+      "Bash(qlmanage -t -s 1600 -o /private/tmp/claude-501/-Users-oscarregis-project-streetlifting/0d79e1be-4a8b-495b-b362-1adb99cb43b4/scratchpad/thumbs /private/tmp/claude-501/-Users-oscarregis-project-streetlifting/0d79e1be-4a8b-495b-b362-1adb99cb43b4/scratchpad/plan_test.pdf)",
+      "Bash(pyinstaller app_531.spec --noconfirm --clean)",
+      "Bash(rm -rf \"/Applications/Calculadora 5-3-1.app\")",
+      "Bash(cp -R \"dist/Calculadora 5-3-1.app\" /Applications/)",
+      "Read(//Applications/Calculadora 5-3-1.app/Contents/**)",
+      "Bash(git config *)",
+      "Bash(gh auth *)",
+      "Bash(echo \"name: $\\(git config --global user.name\\)\")",
+      "Bash(echo \"email: $\\(git config --global user.email\\)\")",
+      "Bash(git init *)",
+      "Bash(git add *)"
+    ]
+  }
+}

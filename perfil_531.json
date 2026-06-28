@@ -1,0 +1,38 @@
+[
+  {
+    "nombre": "dip",
+    "es_bw": true,
+    "unit": "kg",
+    "rm": 80.0,
+    "tren": "upper",
+    "bw": 95.0,
+    "bw_unit": "kg"
+  },
+  {
+    "nombre": "pull up",
+    "es_bw": true,
+    "unit": "kg",
+    "rm": 45.0,
+    "tren": "upper",
+    "bw": 95.0,
+    "bw_unit": "kg"
+  },
+  {
+    "nombre": "squat",
+    "es_bw": false,
+    "unit": "lbs",
+    "rm": 280.0,
+    "tren": "lower",
+    "bw": null,
+    "bw_unit": null
+  },
+  {
+    "nombre": "overhead press",
+    "es_bw": false,
+    "unit": "kg",
+    "rm": 160.0,
+    "tren": "upper",
+    "bw": null,
+    "bw_unit": null
+  }
+]
