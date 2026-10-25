@@ -1,5 +1,6 @@
 package com.streetlifting.app.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -44,7 +45,6 @@ import com.streetlifting.app.core.BloqueCalc
 import com.streetlifting.app.core.FiveThreeOne
 import com.streetlifting.app.core.Program
 import com.streetlifting.app.data.SetLogEntity
-import com.streetlifting.app.ui.theme.AmrapColor
 import kotlinx.coroutines.launch
 
 private class FieldRow(peso: String, reps: String) {
@@ -262,16 +262,25 @@ private fun SetCard(
     mostrarPeso: Boolean = true,
 ) {
     if (row == null) return
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        border = if (highlight) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
+    ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 if (highlight) {
                     Box(
                         Modifier
                             .clip(RoundedCornerShape(4.dp))
-                            .background(AmrapColor)
+                            .background(MaterialTheme.colorScheme.primary)
                             .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) { Text("AMRAP", style = MaterialTheme.typography.labelSmall) }
+                    ) {
+                        Text(
+                            "AMRAP",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
                     Text("  ")
                 }
                 Text(titulo, fontWeight = FontWeight.Bold)

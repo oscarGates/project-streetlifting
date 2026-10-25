@@ -162,9 +162,17 @@ private fun CycleHeaderCard(
                 val ciclo = lifts.firstOrNull { it.clave == p.clave }?.ciclo ?: 1
                 val tm = FiveThreeOne.fmt(FiveThreeOne.redondear(c.tm, c.unit, cfg.micro))
                 val tmNext = FiveThreeOne.fmt(FiveThreeOne.redondear(c.tmNext, c.unit, cfg.micro))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
                     Text("${p.etiqueta} · ciclo $ciclo", fontWeight = FontWeight.Medium)
-                    Text("$tm ${c.unit}  →  $tmNext ${c.unit}")
+                    Text(
+                        "$tm → $tmNext ${c.unit}",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
                 }
             }
             OutlinedButton(
