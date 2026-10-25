@@ -57,7 +57,7 @@ sealed interface Bloque {
     data class Principal531(val principal: Principal) : Bloque
     data class Secundario(val principal: Principal, val variante: Variante) : Bloque
     data class Accesorio(val def: AccesorioDef) : Bloque
-    data class Cardio(val descripcion: String) : Bloque
+    data class Cardio(val descripcion: String, val minutos: Int) : Bloque
 }
 
 data class Dia(
@@ -149,7 +149,7 @@ object Program {
         ),
         Dia(
             titulo = "Miércoles · Cardio",
-            bloques = listOf(Bloque.Cardio("Zona 2 · 1 h")),
+            bloques = listOf(Bloque.Cardio("Zona 2 · 1 h", 60)),
         ),
         Dia(
             titulo = "Jueves · Sentadilla",
@@ -166,7 +166,7 @@ object Program {
             bloques = listOf(
                 Bloque.Secundario(DOMINADA, DOMINADA_LIGERO),
                 Bloque.Secundario(FONDO, FONDO_LIGERO),
-                Bloque.Cardio("Zona 2"),
+                Bloque.Cardio("Zona 2", 30),
             ),
         ),
     )

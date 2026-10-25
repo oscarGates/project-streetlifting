@@ -85,7 +85,34 @@ interface AppDao {
     )
     suspend fun sessionFor(ciclo: Int, semana: Int, diaIndex: Int): SessionEntity?
 
-    @Query("SELECT * FROM set_logs WHERE sessionId = :sessionId ORDER BY tipo DESC, idx ASC")
+    /**
+     * Reemplaza la sesión de (ciclo, semana, día) con sus registros, de forma
+     * atómica. Conserva la fecha en que empezó la sesión (se guarda en cada cambio).
+     */
+    @Transaction
+    suspend fun replaceSession(
+        ciclo: Int,
+        semana: Int,
+        diaIndex: Int,
+        notas: String,
+        logs: List<SetLogEntity>,
+        ahora: Long,
+    ) {
+        val previa = sessionFor(ciclo, semana, diaIndex)
+        previa?.let { deleteSession(it) }
+        val id = insertSession(
+            SessionEntity(
+                fechaEpoch = previa?.fechaEpoch ?: ahora,
+                ciclo = ciclo,
+                semana = semana,
+                diaIndex = diaIndex,
+                notas = notas,
+            )
+        )
+        insertSetLogs(logs.map { it.copy(id = 0, sessionId = id) })
+    }
+
+    @Query("SELECT * FROM set_logs WHERE sessionId = :sessionId ORDER BY bloque ASC, idx ASC")
     suspend fun setLogsFor(sessionId: Long): List<SetLogEntity>
 
     @Transaction

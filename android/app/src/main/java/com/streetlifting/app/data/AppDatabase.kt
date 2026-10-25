@@ -12,7 +12,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ConfigEntity::class, LiftEntity::class, AccesorioEntity::class,
         SessionEntity::class, SetLogEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -28,7 +28,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "streetlifting531.db",
-                ).addMigrations(MIGRATION_1_2).build().also { INSTANCE = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { INSTANCE = it }
             }
 
         /**
@@ -52,6 +52,18 @@ abstract class AppDatabase : RoomDatabase() {
                     "UPDATE sessions SET diaIndex = CASE diaIndex " +
                         "WHEN 1 THEN 3 WHEN 2 THEN 1 WHEN 3 THEN -1 ELSE diaIndex END"
                 )
+            }
+        }
+
+        /** v3: registro por serie con ✓ (`hecho`) y bloque del día (`bloque`). */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE set_logs ADD COLUMN bloque INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE set_logs ADD COLUMN hecho INTEGER NOT NULL DEFAULT 0")
+                // El 5/3/1 siempre es el primer bloque; los auxiliares antiguos
+                // eran una fila de texto por bloque y no se pueden reubicar.
+                db.execSQL("UPDATE set_logs SET bloque = -1 WHERE tipo = 'AUX'")
+                db.execSQL("UPDATE set_logs SET hecho = 1 WHERE tipo = 'MAIN' AND reps IS NOT NULL")
             }
         }
     }

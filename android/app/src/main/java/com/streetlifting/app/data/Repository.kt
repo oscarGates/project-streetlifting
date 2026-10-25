@@ -89,19 +89,7 @@ class Repository(private val dao: AppDao) {
         diaIndex: Int,
         notas: String,
         logs: List<SetLogEntity>,
-    ) {
-        dao.sessionFor(ciclo, semana, diaIndex)?.let { dao.deleteSession(it) }
-        val id = dao.insertSession(
-            SessionEntity(
-                fechaEpoch = System.currentTimeMillis(),
-                ciclo = ciclo,
-                semana = semana,
-                diaIndex = diaIndex,
-                notas = notas,
-            )
-        )
-        dao.insertSetLogs(logs.map { it.copy(id = 0, sessionId = id) })
-    }
+    ) = dao.replaceSession(ciclo, semana, diaIndex, notas, logs, System.currentTimeMillis())
 
     suspend fun deleteSession(session: SessionEntity) = dao.deleteSession(session)
 

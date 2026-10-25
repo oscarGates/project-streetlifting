@@ -94,7 +94,10 @@ fun HistoryScreen(vm: AppViewModel, onBack: () -> Unit) {
                         )
                         Text(df.format(Date(s.session.fechaEpoch)),
                             style = MaterialTheme.typography.bodySmall)
-                        s.logs.filter { it.tipo == "MAIN" }.forEach { log ->
+                        val hechas = s.logs.count { it.hecho }
+                        Text("$hechas/${s.logs.size} series hechas",
+                            style = MaterialTheme.typography.bodySmall)
+                        s.logs.filter { it.tipo == "MAIN" && it.hecho }.sortedBy { it.idx }.forEach { log ->
                             val reps = log.reps?.toString() ?: "-"
                             val peso = log.pesoUsado?.let { fmtNum1(it) } ?: "-"
                             Text("${log.label}: $peso × $reps",
@@ -116,7 +119,7 @@ private fun estimated1rmSeries(sessions: List<SessionWithLogs>, diaIndex: Int): 
         .filter { it.session.diaIndex == diaIndex }
         .sortedBy { it.session.fechaEpoch }
         .mapNotNull { s ->
-            s.logs.filter { it.tipo == "MAIN" && it.pesoUsado != null && it.reps != null }
+            s.logs.filter { it.tipo == "MAIN" && it.hecho && it.pesoUsado != null && it.reps != null }
                 .maxOfOrNull { PlanCalculator.epley1rm(it.pesoUsado!!, it.reps!!) }
                 ?.toFloat()
         }

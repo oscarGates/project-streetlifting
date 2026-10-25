@@ -63,15 +63,31 @@ data class AccesorioCalc(
     val deload: Boolean,
 )
 
+/** Una serie concreta a registrar. [peso] es la carga total (null = sin carga). */
+data class SetPlan(
+    val etiqueta: String,
+    val peso: Double?,
+    val reps: Int,
+    val amrap: Boolean = false,
+    val detalle: String = "",
+)
+
 /** Un bloque del día ya calculado para una semana, listo para mostrar/registrar. */
 data class BloqueCalc(
     val titulo: String,
     /** Series del 5/3/1 (vacío si el bloque no es el principal 5/3/1). */
     val series531: List<SerieCalc>,
-    /** Prescripción en una línea (bloques que no son 5/3/1). */
+    /** Prescripción en una línea. */
     val prescripcion: String,
-    val pesoSugerido: Double?,
-    val repsSugeridas: String,
+    /** Series a registrar, una fila por serie. */
+    val sets: List<SetPlan>,
+    /** Unidad de la carga ("kg", "lb", "kg/mano"), null = sin carga. */
+    val unidad: String?,
+    /** Salto de los botones −/+ de peso. */
+    val paso: Double,
+    /** Peso corporal (en [unidad]) si es lastrado: se edita el lastre. */
+    val pesoCorporal: Double? = null,
+    val cardio: Boolean = false,
 )
 
 object PlanCalculator {
@@ -167,12 +183,17 @@ object PlanCalculator {
             is Bloque.Principal531 -> {
                 val max = lifts[b.principal.clave] ?: return@mapNotNull null
                 val week = calcularPrincipal(max, env, incluirDescarga).semanas.getOrNull(semana - 1)
+                val series = week?.series.orEmpty()
                 BloqueCalc(
                     titulo = "${b.principal.etiqueta} · 5/3/1",
-                    series531 = week?.series.orEmpty(),
+                    series531 = series,
                     prescripcion = week?.nombre ?: "",
-                    pesoSugerido = null,
-                    repsSugeridas = "",
+                    sets = series.mapIndexed { i, s ->
+                        SetPlan("Serie ${i + 1}", s.objetivo, s.reps, s.amrap, "${s.pct}% · ${s.pesoTexto}")
+                    },
+                    unidad = max.unit,
+                    paso = FiveThreeOne.incremento(max.unit, env.micro),
+                    pesoCorporal = bwDe(max, env),
                 )
             }
             is Bloque.Secundario -> {
@@ -188,8 +209,10 @@ object PlanCalculator {
                     titulo = "${b.principal.etiqueta} ${v.nombre}",
                     series531 = emptyList(),
                     prescripcion = "${series}×$reps @ ${Math.round(pct * 100)}% · $texto · $nota",
-                    pesoSugerido = objetivo,
-                    repsSugeridas = List(series) { reps }.joinToString(","),
+                    sets = List(series) { SetPlan("Serie ${it + 1}", objetivo, reps) },
+                    unidad = max.unit,
+                    paso = FiveThreeOne.incremento(max.unit, env.micro),
+                    pesoCorporal = bwDe(max, env),
                 )
             }
             is Bloque.Accesorio -> {
@@ -203,18 +226,31 @@ object PlanCalculator {
                     titulo = d.nombre,
                     series531 = emptyList(),
                     prescripcion = "${a.series}×${a.reps} · $carga · $nota",
-                    pesoSugerido = a.peso,
-                    repsSugeridas = List(a.series) { a.reps }.joinToString(","),
+                    sets = List(a.series) { SetPlan("Serie ${it + 1}", a.peso, a.reps) },
+                    unidad = d.unidad.takeIf { a.peso != null },
+                    paso = pasoAccesorio(d.unidad),
                 )
             }
             is Bloque.Cardio -> BloqueCalc(
                 titulo = "Cardio",
                 series531 = emptyList(),
                 prescripcion = b.descripcion,
-                pesoSugerido = null,
-                repsSugeridas = "",
+                sets = listOf(SetPlan("Minutos", null, b.minutos)),
+                unidad = null,
+                paso = 0.0,
+                cardio = true,
             )
         }
+    }
+
+    private fun bwDe(max: MaxInput, env: Entorno): Double? =
+        if (max.esBw) convertir(env.pesoCorporal, env.pcUnit, max.unit) else null
+
+    /** Salto de los botones −/+ según la unidad del accesorio. */
+    private fun pasoAccesorio(unidad: String?): Double = when (unidad) {
+        "lb" -> 5.0
+        "kg/mano" -> 1.0
+        else -> 2.5
     }
 
     /** 1RM estimado (Epley) a partir de un set: peso * (1 + reps/30). */

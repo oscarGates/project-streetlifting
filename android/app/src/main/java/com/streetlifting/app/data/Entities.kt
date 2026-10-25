@@ -74,12 +74,17 @@ data class SetLogEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val sessionId: Long,
     val tipo: String,        // "MAIN" (series 5/3/1) | "AUX" (resto de bloques)
+    /** Índice del bloque en el día (-1 = registro antiguo sin bloque). */
+    val bloque: Int = 0,
+    /** Índice de la serie dentro del bloque. */
     val idx: Int,
     val label: String,
     val prescripcion: String,
     val pesoUsado: Double?,
     val reps: Int?,
     val nota: String = "",
+    /** Serie marcada como hecha (✓). */
+    val hecho: Boolean = false,
 )
 
 data class SessionWithLogs(

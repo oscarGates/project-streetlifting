@@ -107,10 +107,29 @@ class FiveThreeOneTest {
         val jueves = Program.DIAS[3]
         val sem1 = PlanCalculator.calcularDia(jueves, 1, lifts, emptyMap(), env, true)
         // Fondo medium 75% → +20; dominada medium 80% → +5 (total = BW + lastre).
-        assertEquals(114.0, sem1[1].pesoSugerido!!, 0.0001)
-        assertEquals(99.0, sem1[2].pesoSugerido!!, 0.0001)
+        assertEquals(114.0, sem1[1].sets[0].peso!!, 0.0001)
+        assertEquals(99.0, sem1[2].sets[0].peso!!, 0.0001)
+        assertEquals(3, sem1[1].sets.size)
+        assertEquals(94.0, sem1[1].pesoCorporal!!, 0.0) // lastrado: se edita el lastre
         val deload = PlanCalculator.calcularDia(jueves, 4, lifts, emptyMap(), env, true)
-        assertEquals(76.5, deload[1].pesoSugerido!!, 0.0001) // fondo 50% → −17.5
+        assertEquals(76.5, deload[1].sets[0].peso!!, 0.0001) // fondo 50% → −17.5
+        assertEquals(2, deload[1].sets.size)
+    }
+
+    @Test
+    fun seriesPorBloque() {
+        val lifts = mapOf("sentadilla" to sentadilla, "fondo" to fondo, "dominada" to dominada)
+        val lunes = PlanCalculator.calcularDia(Program.DIAS[0], 1, lifts, emptyMap(), env, true)
+        // Dominada 5/3/1: 3 series, la última AMRAP; remo 3×8 a 65 kg con saltos de 2.5.
+        assertEquals(3, lunes[0].sets.size)
+        assertTrue(lunes[0].sets[2].amrap)
+        assertEquals(listOf(8, 8, 8), lunes[2].sets.map { it.reps })
+        assertEquals(65.0, lunes[2].sets[0].peso!!, 0.0)
+        assertEquals(2.5, lunes[2].paso, 0.0)
+        assertEquals(5.0, lunes[4].paso, 0.0) // curl femoral en lb
+        val miercoles = PlanCalculator.calcularDia(Program.DIAS[2], 1, lifts, emptyMap(), env, true)
+        assertTrue(miercoles[0].cardio)
+        assertEquals(60, miercoles[0].sets[0].reps)
     }
 
     @Test
