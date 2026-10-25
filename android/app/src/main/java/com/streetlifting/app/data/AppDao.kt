@@ -37,6 +37,38 @@ interface AppDao {
     @Upsert
     suspend fun upsertLifts(lifts: List<LiftEntity>)
 
+    // ---- Accesorios ----
+    @Query("SELECT * FROM accesorios")
+    fun accesoriosFlow(): Flow<List<AccesorioEntity>>
+
+    @Query("SELECT * FROM accesorios")
+    suspend fun accesoriosOnce(): List<AccesorioEntity>
+
+    @Upsert
+    suspend fun upsertAccesorios(accesorios: List<AccesorioEntity>)
+
+    // ---- Avance de ciclo ----
+    @Query("UPDATE lifts SET ciclo = ciclo + 1")
+    suspend fun avanzarCicloLifts()
+
+    @Query("UPDATE accesorios SET ciclo = ciclo + 1")
+    suspend fun avanzarCicloAccesorios()
+
+    @Query("UPDATE config SET ciclo = ciclo + 1 WHERE id = 0")
+    suspend fun avanzarMes()
+
+    /**
+     * Pasa al siguiente ciclo: cada principal suma su incremento al TM, cada
+     * accesorio avanza su progresión doble y empieza un mes nuevo. Las sesiones
+     * registradas no se tocan (quedan en el mes anterior).
+     */
+    @Transaction
+    suspend fun avanzarCiclo() {
+        avanzarCicloLifts()
+        avanzarCicloAccesorios()
+        avanzarMes()
+    }
+
     // ---- Sessions ----
     @Insert
     suspend fun insertSession(session: SessionEntity): Long

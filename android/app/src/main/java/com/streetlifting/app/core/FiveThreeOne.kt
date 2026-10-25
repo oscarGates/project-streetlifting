@@ -1,23 +1,22 @@
 package com.streetlifting.app.core
 
+import kotlin.math.abs
 import kotlin.math.floor
+import kotlin.math.sign
 
 /**
- * Motor 5/3/1 portado de `ciclo_531.py` / `pdf_531.py`.
+ * Motor 5/3/1 según la hoja "Plan 5-3-1 mensual por movimiento".
  *
- * - La onda de porcentajes ([CYCLE]) y el Training Max = 90% del 1RM ([TM_FACTOR])
- *   son idénticos al motor Python.
- * - Redondeo con microplacas: 2.5 kg por defecto, 1.25 kg con micro=true
- *   (en lbs equivale a 5 / 2.5 lbs).
+ * - La onda de porcentajes ([CYCLE]) es la misma que en `ciclo_531.py`.
+ * - Training Max = 85% del 1RM ([TM_FACTOR]); en lastrados el 1RM es total
+ *   (peso corporal + lastre).
+ * - Redondeo como `ROUND()` de Excel (mitad lejos de cero): 2.5 kg por defecto,
+ *   1.25 kg con micro=true (en lbs equivale a 5 / 2.5 lbs).
  */
 object FiveThreeOne {
 
     const val KG_TO_LBS = 2.20462
-    const val TM_FACTOR = 0.90
-
-    // Incrementos de TM para el siguiente ciclo (en kg; se convierten por unidad).
-    const val INCREMENT_UPPER_KG = 2.5
-    const val INCREMENT_LOWER_KG = 5.0
+    const val TM_FACTOR = 0.85
 
     data class SetScheme(val pct: Double, val reps: Int, val amrap: Boolean)
     data class WeekScheme(val nombre: String, val deload: Boolean, val sets: List<SetScheme>)
@@ -53,9 +52,11 @@ object FiveThreeOne {
 
     fun redondear(x: Double, unit: String, micro: Boolean = false): Double {
         val inc = incremento(unit, micro)
-        // Math.rint = redondeo a par (half-to-even), igual que round() de Python.
-        return Math.rint(x / inc) * inc
+        return roundExcel(x / inc) * inc
     }
+
+    /** `ROUND(x, 0)` de Excel: la mitad se redondea alejándose de cero. */
+    fun roundExcel(x: Double): Double = sign(x) * floor(abs(x) + 0.5)
 
     /** Formatea quitando el `.0` innecesario, como `core.fmt` en Python. */
     fun fmt(x: Double): String =

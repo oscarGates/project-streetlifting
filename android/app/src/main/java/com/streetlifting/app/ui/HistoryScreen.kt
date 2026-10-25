@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.streetlifting.app.core.PlanCalculator
 import com.streetlifting.app.core.Program
+import com.streetlifting.app.data.Repository
 import com.streetlifting.app.data.SessionWithLogs
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -57,14 +58,14 @@ fun HistoryScreen(vm: AppViewModel, onBack: () -> Unit) {
             // Una tarjeta de progreso (1RM estimado) por principal.
             item { Text("1RM estimado (Epley)", style = MaterialTheme.typography.titleLarge) }
 
-            Program.DIAS.forEachIndexed { idx, dia ->
-                val serie = estimated1rmSeries(sessions, idx)
+            Program.PRINCIPALES.forEach { p ->
+                val serie = estimated1rmSeries(sessions, Program.diaDel531(p.clave))
                 if (serie.isNotEmpty()) {
                     item {
                         Card(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text(dia.principal.etiqueta, fontWeight = FontWeight.Bold)
+                                    Text(p.etiqueta, fontWeight = FontWeight.Bold)
                                     Text("máx: ${"%.1f".format(serie.max())}")
                                 }
                                 LineChart(points = serie, color = MaterialTheme.colorScheme.primary)
@@ -87,8 +88,8 @@ fun HistoryScreen(vm: AppViewModel, onBack: () -> Unit) {
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
-                            "${Program.DIAS.getOrNull(s.session.diaIndex)?.titulo ?: "Día"} · " +
-                                "Ciclo ${s.session.ciclo} · Sem ${s.session.semana}",
+                            "${Repository.tituloDia(s.session.diaIndex)} · " +
+                                "Mes ${s.session.ciclo} · Sem ${s.session.semana}",
                             fontWeight = FontWeight.Bold,
                         )
                         Text(df.format(Date(s.session.fechaEpoch)),
@@ -109,7 +110,7 @@ fun HistoryScreen(vm: AppViewModel, onBack: () -> Unit) {
     }
 }
 
-/** 1RM estimado por sesión (cronológico) para un día/principal. */
+/** 1RM estimado por sesión (cronológico) del día donde se hace el 5/3/1 de un principal. */
 private fun estimated1rmSeries(sessions: List<SessionWithLogs>, diaIndex: Int): List<Float> =
     sessions
         .filter { it.session.diaIndex == diaIndex }

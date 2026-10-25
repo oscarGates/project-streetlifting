@@ -5,8 +5,11 @@ import com.streetlifting.app.core.FiveThreeOne.fmt
 import com.streetlifting.app.core.FiveThreeOne.redondear
 
 /**
- * Cálculo de un principal, portado de `calcular_principal` en `pdf_531.py`.
- * Devuelve las semanas con sus 3 series y el peso ya formateado como en el PDF.
+ * Cálculo del plan con las fórmulas de "Plan 5-3-1 mensual por movimiento.xlsx":
+ * - TM = 1RM total × 0.85 + (ciclo − 1) × incremento.
+ * - Barra: ROUND(TM × % / redondeo) × redondeo.
+ * - Lastrado: lastre = ROUND((TM × % − peso corporal) / redondeo) × redondeo;
+ *   negativo = asistencia.
  */
 
 data class SerieCalc(
@@ -35,71 +38,183 @@ data class PrincipalCalc(
 
 /** Parámetros de un principal tal y como los guarda el usuario. */
 data class MaxInput(
+    /** 1RM total: en lastrados incluye peso corporal + lastre. */
     val rm: Double,
     val unit: String,
     val esBw: Boolean,
-    val tren: Tren,
+    /** Ciclo actual del movimiento (1-based). */
+    val ciclo: Int = 1,
+    /** Incremento de TM por ciclo, en la unidad del ejercicio. */
+    val incremento: Double,
+)
+
+/** Estado editable de un accesorio (carga inicial, salto y ciclo). */
+data class AccesorioEstado(
+    val pesoInicial: Double?,
+    val salto: Double,
+    val ciclo: Int,
+)
+
+/** Prescripción de un accesorio para una semana concreta. */
+data class AccesorioCalc(
+    val peso: Double?,
+    val series: Int,
+    val reps: Int,
+    val deload: Boolean,
+)
+
+/** Un bloque del día ya calculado para una semana, listo para mostrar/registrar. */
+data class BloqueCalc(
+    val titulo: String,
+    /** Series del 5/3/1 (vacío si el bloque no es el principal 5/3/1). */
+    val series531: List<SerieCalc>,
+    /** Prescripción en una línea (bloques que no son 5/3/1). */
+    val prescripcion: String,
+    val pesoSugerido: Double?,
+    val repsSugeridas: String,
 )
 
 object PlanCalculator {
 
+    /** Parámetros globales que afectan a la carga. */
+    data class Entorno(
+        val pesoCorporal: Double,
+        val pcUnit: String,
+        val micro: Boolean,
+        val pesoBarra: Double? = null,
+    )
+
+    /** Carga para un % del TM: (objetivo total, texto para mostrar). */
+    private fun carga(max: MaxInput, tm: Double, pct: Double, env: Entorno): Pair<Double, String> {
+        val unit = max.unit
+        return if (max.esBw) {
+            val bw = convertir(env.pesoCorporal, env.pcUnit, unit)
+            val lastre = redondear(tm * pct - bw, unit, env.micro)
+            val texto = when {
+                lastre > 0 -> "+${fmt(lastre)} $unit"
+                lastre == 0.0 -> "peso corporal"
+                else -> "asistencia ${fmt(-lastre)} $unit"
+            }
+            (bw + lastre) to texto
+        } else {
+            val objetivo = redondear(tm * pct, unit, env.micro)
+            val barra = env.pesoBarra ?: Program.pesoBarra(unit)
+            val porLado = (objetivo - barra) / 2.0
+            val texto = if (porLado > 0)
+                "${fmt(objetivo)} $unit  (${fmt(porLado)}/lado)"
+            else
+                "${fmt(objetivo)} $unit  (solo barra)"
+            objetivo to texto
+        }
+    }
+
+    fun tm(max: MaxInput): Double =
+        max.rm * FiveThreeOne.TM_FACTOR + (max.ciclo - 1).coerceAtLeast(0) * max.incremento
+
     fun calcularPrincipal(
         max: MaxInput,
-        pesoCorporal: Double,
-        pcUnit: String,
-        micro: Boolean,
+        env: Entorno,
         incluirDescarga: Boolean,
-        pesoBarra: Double? = null,
-        ciclo: Int = 1,
     ): PrincipalCalc {
-        val unit = max.unit
-        val barra = pesoBarra ?: Program.pesoBarra(unit)
-
-        val incKg = if (max.tren == Tren.UPPER)
-            FiveThreeOne.INCREMENT_UPPER_KG else FiveThreeOne.INCREMENT_LOWER_KG
-        val incUnit = convertir(incKg, "kg", unit)
-
-        val bwDisp: Double?
-        val tmBase: Double
-        if (max.esBw) {
-            bwDisp = convertir(pesoCorporal, pcUnit, unit)
-            tmBase = (bwDisp + max.rm) * FiveThreeOne.TM_FACTOR
-        } else {
-            bwDisp = null
-            tmBase = max.rm * FiveThreeOne.TM_FACTOR
-        }
-
-        // Cada ciclo avanzado suma un incremento al TM.
-        val tm = tmBase + (ciclo - 1).coerceAtLeast(0) * incUnit
-        val tmNext = tm + incUnit
-
+        val tm = tm(max)
         val semanas = FiveThreeOne.CYCLE
             .filter { !it.deload || incluirDescarga }
             .map { wk ->
                 val series = wk.sets.map { s ->
-                    val objetivo = redondear(tm * s.pct, unit, micro)
-                    val pesoTexto: String = if (max.esBw) {
-                        val lastre = redondear(objetivo - bwDisp!!, unit, micro)
-                        if (lastre >= 0) "+${fmt(lastre)} $unit" else "asistencia (liga)"
-                    } else {
-                        val porLado = (objetivo - barra) / 2.0
-                        if (porLado > 0)
-                            "${fmt(objetivo)} $unit  (${fmt(porLado)}/lado)"
-                        else
-                            "${fmt(objetivo)} $unit  (solo barra)"
-                    }
+                    val (objetivo, texto) = carga(max, tm, s.pct, env)
                     SerieCalc(
                         pct = Math.round(s.pct * 100).toInt(),
                         reps = s.reps,
                         amrap = s.amrap,
-                        pesoTexto = pesoTexto,
+                        pesoTexto = texto,
                         objetivo = objetivo,
                     )
                 }
                 WeekCalc(wk.nombre, wk.deload, series)
             }
+        val bwDisp = if (max.esBw) convertir(env.pesoCorporal, env.pcUnit, max.unit) else null
+        return PrincipalCalc(max.unit, max.esBw, bwDisp, tm, tm + max.incremento, semanas)
+    }
 
-        return PrincipalCalc(unit, max.esBw, bwDisp, tm, tmNext, semanas)
+    /** Progresión doble de un accesorio; [semana] 1..4 (4 = descarga). */
+    fun calcularAccesorio(def: AccesorioDef, est: AccesorioEstado, semana: Int): AccesorioCalc {
+        val c = (est.ciclo - 1).coerceAtLeast(0)
+        val tope = def.repsTope
+        val pasos = tope?.let { it - def.repsInicio + 1 }
+        val pesoCiclo = est.pesoInicial?.let { p ->
+            if (pasos == null) p else p + est.salto * (c / pasos)
+        }
+        if (semana >= 4) {
+            val peso = pesoCiclo?.let { (it - def.saltosDeload * est.salto).coerceAtLeast(0.0) }
+            return AccesorioCalc(peso, def.seriesDeload, def.repsDeload, deload = true)
+        }
+        val extra = semana - 1
+        val reps = if (tope == null || pasos == null) def.repsInicio + c + extra
+        else minOf(tope, def.repsInicio + c % pasos + extra)
+        return AccesorioCalc(pesoCiclo, def.series, reps, deload = false)
+    }
+
+    /** Calcula todos los bloques de [dia] para la [semana] (1..4). */
+    fun calcularDia(
+        dia: Dia,
+        semana: Int,
+        lifts: Map<String, MaxInput>,
+        accesorios: Map<String, AccesorioEstado>,
+        env: Entorno,
+        incluirDescarga: Boolean,
+    ): List<BloqueCalc> = dia.bloques.mapNotNull { b ->
+        when (b) {
+            is Bloque.Principal531 -> {
+                val max = lifts[b.principal.clave] ?: return@mapNotNull null
+                val week = calcularPrincipal(max, env, incluirDescarga).semanas.getOrNull(semana - 1)
+                BloqueCalc(
+                    titulo = "${b.principal.etiqueta} · 5/3/1",
+                    series531 = week?.series.orEmpty(),
+                    prescripcion = week?.nombre ?: "",
+                    pesoSugerido = null,
+                    repsSugeridas = "",
+                )
+            }
+            is Bloque.Secundario -> {
+                val max = lifts[b.principal.clave] ?: return@mapNotNull null
+                val v = b.variante
+                val deload = semana >= 4
+                val pct = if (deload) v.pctDeload else v.pct
+                val series = if (deload) v.seriesDeload else v.series
+                val reps = if (deload) v.repsDeload else v.reps
+                val (objetivo, texto) = carga(max, tm(max), pct, env)
+                val nota = if (deload) "Deload" else v.indicacion
+                BloqueCalc(
+                    titulo = "${b.principal.etiqueta} ${v.nombre}",
+                    series531 = emptyList(),
+                    prescripcion = "${series}×$reps @ ${Math.round(pct * 100)}% · $texto · $nota",
+                    pesoSugerido = objetivo,
+                    repsSugeridas = List(series) { reps }.joinToString(","),
+                )
+            }
+            is Bloque.Accesorio -> {
+                val d = b.def
+                val est = accesorios[d.clave]
+                    ?: AccesorioEstado(d.pesoInicial, d.salto, 1)
+                val a = calcularAccesorio(d, est, semana)
+                val carga = a.peso?.let { "${fmt(it)} ${d.unidad}" } ?: "peso corporal"
+                val nota = if (a.deload) "Deload" else d.indicacion
+                BloqueCalc(
+                    titulo = d.nombre,
+                    series531 = emptyList(),
+                    prescripcion = "${a.series}×${a.reps} · $carga · $nota",
+                    pesoSugerido = a.peso,
+                    repsSugeridas = List(a.series) { a.reps }.joinToString(","),
+                )
+            }
+            is Bloque.Cardio -> BloqueCalc(
+                titulo = "Cardio",
+                series531 = emptyList(),
+                prescripcion = b.descripcion,
+                pesoSugerido = null,
+                repsSugeridas = "",
+            )
+        }
     }
 
     /** 1RM estimado (Epley) a partir de un set: peso * (1 + reps/30). */

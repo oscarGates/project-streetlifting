@@ -35,6 +35,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.streetlifting.app.core.Program
+import com.streetlifting.app.data.AccesorioEntity
 import com.streetlifting.app.data.ConfigEntity
 import com.streetlifting.app.data.LiftEntity
 
@@ -44,12 +46,28 @@ private class LiftState(
     rm: String,
     unit: String,
     esBw: Boolean,
-    tren: String,
+    val tren: String,
+    ciclo: String,
+    incremento: String,
 ) {
     var rm by mutableStateOf(rm)
     var unit by mutableStateOf(unit)
     var esBw by mutableStateOf(esBw)
-    var tren by mutableStateOf(tren)
+    var ciclo by mutableStateOf(ciclo)
+    var incremento by mutableStateOf(incremento)
+}
+
+private class AccState(
+    val clave: String,
+    val nombre: String,
+    val unidad: String?,
+    pesoInicial: String,
+    salto: String,
+    ciclo: String,
+) {
+    var pesoInicial by mutableStateOf(pesoInicial)
+    var salto by mutableStateOf(salto)
+    var ciclo by mutableStateOf(ciclo)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -57,6 +75,7 @@ private class LiftState(
 fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
     val config by vm.config.collectAsStateSafe()
     val lifts by vm.lifts.collectAsStateSafe()
+    val accesorios by vm.accesorios.collectAsStateSafe()
 
     var pesoCorporal by remember { mutableStateOf("") }
     var pcUnit by remember { mutableStateOf("kg") }
@@ -66,10 +85,11 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
     var pesoBarra by remember { mutableStateOf("") }
     var loaded by remember { mutableStateOf(false) }
     val liftStates = remember { mutableStateListOf<LiftState>() }
+    val accStates = remember { mutableStateListOf<AccState>() }
 
-    LaunchedEffect(config, lifts) {
+    LaunchedEffect(config, lifts, accesorios) {
         val c = config
-        if (!loaded && c != null && lifts.isNotEmpty()) {
+        if (!loaded && c != null && lifts.isNotEmpty() && accesorios.isNotEmpty()) {
             pesoCorporal = fmtCfg(c.pesoCorporal)
             pcUnit = c.pcUnit
             micro = c.micro
@@ -77,8 +97,23 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
             ciclo = c.ciclo.toString()
             pesoBarra = c.pesoBarraKg?.let { fmtCfg(it) } ?: ""
             liftStates.clear()
-            lifts.forEach {
-                liftStates.add(LiftState(it.clave, it.etiqueta, fmtCfg(it.rm), it.unit, it.esBw, it.tren))
+            Program.PRINCIPALES.mapNotNull { p -> lifts.firstOrNull { it.clave == p.clave } }.forEach {
+                liftStates.add(
+                    LiftState(
+                        it.clave, it.etiqueta, fmtCfg(it.rm), it.unit, it.esBw, it.tren,
+                        it.ciclo.toString(), fmtCfg(it.incremento),
+                    )
+                )
+            }
+            accStates.clear()
+            Program.ACCESORIOS.forEach { def ->
+                val e = accesorios.firstOrNull { it.clave == def.clave } ?: return@forEach
+                accStates.add(
+                    AccState(
+                        def.clave, def.nombre, def.unidad,
+                        e.pesoInicial?.let { fmtCfg(it) } ?: "", fmtCfg(e.salto), e.ciclo.toString(),
+                    )
+                )
             }
             loaded = true
         }
@@ -120,7 +155,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
                             OutlinedTextField(
                                 value = ciclo,
                                 onValueChange = { ciclo = it },
-                                label = { Text("Ciclo actual") },
+                                label = { Text("Mes actual") },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                 modifier = Modifier.weight(1f),
@@ -150,7 +185,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
                             OutlinedTextField(
                                 value = ls.rm,
                                 onValueChange = { ls.rm = it },
-                                label = { Text(if (ls.esBw) "1RM (lastre)" else "1RM") },
+                                label = { Text(if (ls.esBw) "1RM total (cuerpo + lastre)" else "1RM") },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                 modifier = Modifier.weight(1f),
@@ -158,18 +193,30 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
                             UnitChips(ls.unit) { ls.unit = it }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            FilterChip(
-                                selected = ls.tren == "upper",
-                                onClick = { ls.tren = "upper" },
-                                label = { Text("Superior") },
-                            )
-                            FilterChip(
-                                selected = ls.tren == "lower",
-                                onClick = { ls.tren = "lower" },
-                                label = { Text("Inferior") },
-                            )
+                            NumField("Ciclo", ls.ciclo, KeyboardType.Number, Modifier.weight(1f)) { ls.ciclo = it }
+                            NumField("Incremento TM/ciclo", ls.incremento, KeyboardType.Decimal, Modifier.weight(1f)) {
+                                ls.incremento = it
+                            }
                         }
                         SwitchRow("Lastrado (peso corporal)", ls.esBw) { ls.esBw = it }
+                    }
+                }
+            }
+
+            item { Text("Accesorios", style = MaterialTheme.typography.titleLarge) }
+
+            items(accStates) { a ->
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(a.nombre, fontWeight = FontWeight.Bold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (a.unidad != null) {
+                                NumField("Peso inicial (${a.unidad})", a.pesoInicial, KeyboardType.Decimal,
+                                    Modifier.weight(1f)) { a.pesoInicial = it }
+                                NumField("Salto", a.salto, KeyboardType.Decimal, Modifier.weight(1f)) { a.salto = it }
+                            }
+                            NumField("Ciclo", a.ciclo, KeyboardType.Number, Modifier.weight(1f)) { a.ciclo = it }
+                        }
                     }
                 }
             }
@@ -192,6 +239,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
                             )
                         }
                         liftStates.forEach { ls ->
+                            val prev = lifts.firstOrNull { it.clave == ls.clave }
                             vm.updateLift(
                                 LiftEntity(
                                     clave = ls.clave,
@@ -200,9 +248,24 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
                                     unit = ls.unit,
                                     esBw = ls.esBw,
                                     tren = ls.tren,
+                                    ciclo = ls.ciclo.toIntOrNull()?.coerceAtLeast(1) ?: prev?.ciclo ?: 1,
+                                    incremento = ls.incremento.replace(",", ".").toDoubleOrNull()
+                                        ?: prev?.incremento ?: 0.0,
                                 )
                             )
                         }
+                        vm.updateAccesorios(
+                            accStates.map { a ->
+                                val prev = accesorios.firstOrNull { it.clave == a.clave }
+                                AccesorioEntity(
+                                    clave = a.clave,
+                                    pesoInicial = a.pesoInicial.replace(",", ".").toDoubleOrNull()
+                                        ?: prev?.pesoInicial,
+                                    salto = a.salto.replace(",", ".").toDoubleOrNull() ?: prev?.salto ?: 0.0,
+                                    ciclo = a.ciclo.toIntOrNull()?.coerceAtLeast(1) ?: prev?.ciclo ?: 1,
+                                )
+                            }
+                        )
                         onBack()
                     },
                 ) { Text("Guardar") }
@@ -217,6 +280,24 @@ private fun UnitChips(unit: String, onChange: (String) -> Unit) {
         FilterChip(selected = unit == "kg", onClick = { onChange("kg") }, label = { Text("kg") })
         FilterChip(selected = unit == "lbs", onClick = { onChange("lbs") }, label = { Text("lbs") })
     }
+}
+
+@Composable
+private fun NumField(
+    label: String,
+    value: String,
+    keyboardType: KeyboardType,
+    modifier: Modifier,
+    onChange: (String) -> Unit,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        label = { Text(label) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+        modifier = modifier,
+    )
 }
 
 @Composable

@@ -17,19 +17,33 @@ data class ConfigEntity(
     val incluirDescarga: Boolean,
     /** null = barra estándar (20 kg / 45 lbs). */
     val pesoBarraKg: Double?,
-    /** Ciclo actual (1-based); cada ciclo sube el TM un incremento. */
+    /** Mes / bloque de 4 semanas en curso (agrupa las sesiones registradas). */
     val ciclo: Int,
 )
 
-/** Un principal del programa (dominada, sentadilla, fondo, peso_muerto). */
+/** Un principal del programa (sentadilla, fondo, dominada). */
 @Entity(tableName = "lifts")
 data class LiftEntity(
     @PrimaryKey val clave: String,
     val etiqueta: String,
+    /** 1RM total: en lastrados incluye peso corporal + lastre. */
     val rm: Double,
     val unit: String,
     val esBw: Boolean,
     val tren: String, // "upper" | "lower"
+    /** Ciclo del movimiento (1-based); cada ciclo suma [incremento] al TM. */
+    val ciclo: Int = 1,
+    /** Incremento de TM por ciclo, en la unidad del ejercicio. */
+    val incremento: Double,
+)
+
+/** Estado editable de un accesorio; el resto de su definición vive en `Program`. */
+@Entity(tableName = "accesorios")
+data class AccesorioEntity(
+    @PrimaryKey val clave: String,
+    val pesoInicial: Double?,
+    val salto: Double,
+    val ciclo: Int,
 )
 
 /** Una sesión registrada (un día concreto de una semana/ciclo). */
@@ -39,7 +53,7 @@ data class SessionEntity(
     val fechaEpoch: Long,
     val ciclo: Int,
     val semana: Int,   // 1..4
-    val diaIndex: Int, // 0..3
+    val diaIndex: Int, // índice en Program.DIAS; -1 = día del plan anterior
     val notas: String = "",
 )
 
@@ -59,7 +73,7 @@ data class SessionEntity(
 data class SetLogEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val sessionId: Long,
-    val tipo: String,        // "MAIN" | "AUX"
+    val tipo: String,        // "MAIN" (series 5/3/1) | "AUX" (resto de bloques)
     val idx: Int,
     val label: String,
     val prescripcion: String,

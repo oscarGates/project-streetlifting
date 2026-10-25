@@ -39,7 +39,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
-import com.streetlifting.app.core.PrincipalCalc
+import com.streetlifting.app.core.Bloque
+import com.streetlifting.app.core.BloqueCalc
+import com.streetlifting.app.core.FiveThreeOne
 import com.streetlifting.app.core.Program
 import com.streetlifting.app.data.SetLogEntity
 import com.streetlifting.app.ui.theme.AmrapColor
@@ -71,22 +73,19 @@ fun DayScreen(
         Text("Cargando…", Modifier.padding(16.dp)); return
     }
 
-    var calc by remember { mutableStateOf<PrincipalCalc?>(null) }
+    var bloques by remember { mutableStateOf<List<BloqueCalc>>(emptyList()) }
     val mainRows = remember { mutableStateListOf<FieldRow>() }
     val auxRows = remember { mutableStateListOf<FieldRow>() }
     var notas by remember { mutableStateOf("") }
 
     LaunchedEffect(cfg, semana, diaIndex) {
-        val c = vm.calcular(dia.principal.clave, cfg)
-        calc = c
-        val week = c?.semanas?.getOrNull(semana - 1)
-
+        val bs = vm.calcularDia(diaIndex, semana, cfg)
         val existing = vm.sessionFor(cfg.ciclo, semana, diaIndex)
         val logs = existing?.let { vm.setLogsFor(it.id) }.orEmpty()
         notas = existing?.notas ?: ""
 
         mainRows.clear()
-        week?.series?.forEachIndexed { i, s ->
+        bs.flatMap { it.series531 }.forEachIndexed { i, s ->
             val log = logs.firstOrNull { it.tipo == "MAIN" && it.idx == i }
             mainRows.add(
                 FieldRow(
@@ -96,15 +95,16 @@ fun DayScreen(
             )
         }
         auxRows.clear()
-        dia.auxiliares.forEachIndexed { i, _ ->
+        bs.filter { it.series531.isEmpty() }.forEachIndexed { i, b ->
             val log = logs.firstOrNull { it.tipo == "AUX" && it.idx == i }
             auxRows.add(
                 FieldRow(
-                    peso = log?.pesoUsado?.let { fmtNum(it) } ?: "",
-                    reps = log?.nota ?: "",
+                    peso = log?.pesoUsado?.let { fmtNum(it) } ?: b.pesoSugerido?.let { fmtNum(it) } ?: "",
+                    reps = log?.nota ?: b.repsSugeridas,
                 )
             )
         }
+        bloques = bs
     }
 
     Scaffold(
@@ -120,7 +120,8 @@ fun DayScreen(
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        val week = calc?.semanas?.getOrNull(semana - 1)
+        val semanaNombre = FiveThreeOne.CYCLE.getOrNull(semana - 1)?.nombre ?: "Semana $semana"
+        val auxBloques = bloques.filter { it.series531.isEmpty() }
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
@@ -128,14 +129,10 @@ fun DayScreen(
         ) {
             item {
                 Text(
-                    "${week?.nombre ?: "Semana $semana"} · Ciclo ${cfg.ciclo}",
+                    "$semanaNombre · Mes ${cfg.ciclo}",
                     style = MaterialTheme.typography.titleMedium,
                 )
-                Text(
-                    "Principal: ${dia.principal.etiqueta} · 5/3/1",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                if (dia.principal.esLastrado) {
+                if (dia.bloques.any { it.lastrado }) {
                     Text(
                         "Lastrado: el peso es el total del sistema (cuerpo + lastre).",
                         style = MaterialTheme.typography.bodySmall,
@@ -143,9 +140,10 @@ fun DayScreen(
                 }
             }
 
-            // ---- Principal: una fila por serie ----
-            if (week != null) {
-                week.series.forEachIndexed { i, s ->
+            // ---- Principal 5/3/1: una fila por serie ----
+            bloques.firstOrNull { it.series531.isNotEmpty() }?.let { b ->
+                item { Text(b.titulo, style = MaterialTheme.typography.titleMedium) }
+                b.series531.forEachIndexed { i, s ->
                     item {
                         val reps = "${s.reps}${if (s.amrap) "+" else ""}"
                         SetCard(
@@ -160,19 +158,21 @@ fun DayScreen(
                 }
             }
 
-            // ---- Auxiliares ----
-            item {
-                Text("Auxiliares", style = MaterialTheme.typography.titleMedium)
+            // ---- Resto de bloques: secundarios, accesorios y cardio ----
+            if (auxBloques.isNotEmpty()) {
+                item { Text("Secundarios y accesorios", style = MaterialTheme.typography.titleMedium) }
             }
-            dia.auxiliares.forEachIndexed { i, aux ->
+            auxBloques.forEachIndexed { i, b ->
                 item {
+                    val esCardio = b.pesoSugerido == null && b.repsSugeridas.isEmpty()
                     SetCard(
                         highlight = false,
-                        titulo = aux.nombre,
-                        prescripcion = "${aux.esquema} · RIR ${aux.rir}",
-                        repsLabel = "Reps reales",
+                        titulo = b.titulo,
+                        prescripcion = b.prescripcion,
+                        repsLabel = if (esCardio) "Duración / notas" else "Reps reales",
                         repsNumeric = false,
                         row = auxRows.getOrNull(i),
+                        mostrarPeso = !esCardio,
                     )
                 }
             }
@@ -190,7 +190,7 @@ fun DayScreen(
                 Button(
                     modifier = Modifier.fillMaxWidth(),
                     onClick = {
-                        val logs = buildLogs(week, dia, mainRows, auxRows)
+                        val logs = buildLogs(bloques, mainRows, auxRows)
                         vm.saveSession(cfg.ciclo, semana, diaIndex, notas, logs) {
                             scope.launch { snackbar.showMessage("Sesión guardada") }
                         }
@@ -205,14 +205,20 @@ private suspend fun SnackbarHostState.showMessage(msg: String) {
     showSnackbar(msg)
 }
 
+private val Bloque.lastrado: Boolean
+    get() = when (this) {
+        is Bloque.Principal531 -> principal.esLastrado
+        is Bloque.Secundario -> principal.esLastrado
+        else -> false
+    }
+
 private fun buildLogs(
-    week: com.streetlifting.app.core.WeekCalc?,
-    dia: com.streetlifting.app.core.Dia,
+    bloques: List<BloqueCalc>,
     mainRows: List<FieldRow>,
     auxRows: List<FieldRow>,
 ): List<SetLogEntity> {
     val out = ArrayList<SetLogEntity>()
-    week?.series?.forEachIndexed { i, s ->
+    bloques.flatMap { it.series531 }.forEachIndexed { i, s ->
         val row = mainRows.getOrNull(i) ?: return@forEachIndexed
         val reps = "${s.reps}${if (s.amrap) "+" else ""}"
         out.add(
@@ -227,15 +233,15 @@ private fun buildLogs(
             )
         )
     }
-    dia.auxiliares.forEachIndexed { i, aux ->
+    bloques.filter { it.series531.isEmpty() }.forEachIndexed { i, b ->
         val row = auxRows.getOrNull(i) ?: return@forEachIndexed
         out.add(
             SetLogEntity(
                 sessionId = 0,
                 tipo = "AUX",
                 idx = i,
-                label = aux.nombre,
-                prescripcion = "${aux.esquema} · RIR ${aux.rir}",
+                label = b.titulo,
+                prescripcion = b.prescripcion,
                 pesoUsado = parseD(row.peso),
                 reps = null,
                 nota = row.reps.trim(),
@@ -253,6 +259,7 @@ private fun SetCard(
     repsLabel: String,
     repsNumeric: Boolean,
     row: FieldRow?,
+    mostrarPeso: Boolean = true,
 ) {
     if (row == null) return
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -271,14 +278,16 @@ private fun SetCard(
             }
             Text(prescripcion, style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = row.peso,
-                    onValueChange = { row.peso = it },
-                    label = { Text("Peso") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.width(140.dp),
-                )
+                if (mostrarPeso) {
+                    OutlinedTextField(
+                        value = row.peso,
+                        onValueChange = { row.peso = it },
+                        label = { Text("Peso") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.width(140.dp),
+                    )
+                }
                 OutlinedTextField(
                     value = row.reps,
                     onValueChange = { row.reps = it },
