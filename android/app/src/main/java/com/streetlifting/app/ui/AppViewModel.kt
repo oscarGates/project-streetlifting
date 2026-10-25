@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.streetlifting.app.core.BloqueCalc
+import com.streetlifting.app.core.Calendario
+import com.streetlifting.app.core.PlanCalculator
 import com.streetlifting.app.core.PrincipalCalc
 import com.streetlifting.app.core.Program
 import com.streetlifting.app.data.AccesorioEntity
@@ -12,7 +14,10 @@ import com.streetlifting.app.data.LiftEntity
 import com.streetlifting.app.data.Repository
 import com.streetlifting.app.data.SessionWithLogs
 import com.streetlifting.app.data.SetLogEntity
+import java.time.LocalDate
+import java.time.ZoneId
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -36,6 +41,33 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     val sessions: StateFlow<List<SessionWithLogs>> =
         repo.sessionsFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /**
+     * Semana del plan que toca hoy (puede ser `maxSemanas + 1`: mes terminado).
+     * Se recalcula con cada sesión guardada o cambio de mes.
+     */
+    val semanaActual: StateFlow<Int> =
+        combine(repo.configFlow, repo.sessionsFlow) { cfg, sesiones ->
+            if (cfg == null) return@combine 1
+            Calendario.semanaActual(
+                sesiones.filter { it.session.ciclo == cfg.ciclo }
+                    .map { it.session.semana to it.session.fechaEpoch },
+                LocalDate.now(),
+                ZoneId.systemDefault(),
+                if (cfg.incluirDescarga) 4 else 3,
+            )
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 1)
+
+    /** Última sesión del mismo día del plan, distinta de la de (ciclo, semana). */
+    suspend fun sesionAnterior(diaIndex: Int, ciclo: Int, semana: Int): SessionWithLogs? =
+        repo.otrasSesionesDelDia(diaIndex, ciclo, semana).firstOrNull()
+
+    /** Mejor 1RM estimado (Epley) en series 5/3/1 hechas de otras sesiones del día. */
+    suspend fun mejor1rm(diaIndex: Int, ciclo: Int, semana: Int): Double? =
+        repo.otrasSesionesDelDia(diaIndex, ciclo, semana)
+            .flatMap { it.logs }
+            .filter { it.tipo == "MAIN" && it.hecho && it.pesoUsado != null && (it.reps ?: 0) > 0 }
+            .maxOfOrNull { PlanCalculator.epley1rm(it.pesoUsado!!, it.reps!!) }
 
     /** Calcula los principales para la config actual. */
     suspend fun calcularTodos(config: ConfigEntity): Map<String, PrincipalCalc> {

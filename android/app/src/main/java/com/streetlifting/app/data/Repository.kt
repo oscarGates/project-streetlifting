@@ -82,6 +82,9 @@ class Repository(private val dao: AppDao) {
 
     suspend fun setLogsFor(sessionId: Long): List<SetLogEntity> = dao.setLogsFor(sessionId)
 
+    suspend fun otrasSesionesDelDia(diaIndex: Int, ciclo: Int, semana: Int): List<SessionWithLogs> =
+        dao.otrasSesionesDelDia(diaIndex, ciclo, semana)
+
     /** Guarda (reemplazando si ya existía) una sesión con sus registros. */
     suspend fun saveSession(
         ciclo: Int,

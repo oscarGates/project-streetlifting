@@ -1,5 +1,6 @@
 package com.streetlifting.app.ui
 
+import android.os.SystemClock
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -40,6 +41,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -49,7 +51,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -57,8 +61,10 @@ import androidx.compose.ui.unit.dp
 import com.streetlifting.app.core.Bloque
 import com.streetlifting.app.core.BloqueCalc
 import com.streetlifting.app.core.FiveThreeOne
+import com.streetlifting.app.core.PlanCalculator
 import com.streetlifting.app.core.Program
 import com.streetlifting.app.core.SetPlan
+import com.streetlifting.app.data.SessionWithLogs
 import com.streetlifting.app.data.SetLogEntity
 import kotlinx.coroutines.delay
 
@@ -98,12 +104,63 @@ fun DayScreen(
     var version by remember { mutableIntStateOf(0) }
     var guardada by remember { mutableIntStateOf(0) }
     val onChange: () -> Unit = { version++ }
+    var anterior by remember { mutableStateOf<SessionWithLogs?>(null) }
+    var mejor1rm by remember { mutableStateOf<Double?>(null) }
+    var amrap by remember { mutableStateOf<AmrapResultado?>(null) }
+    // Descanso: instante de fin (elapsedRealtime) y duración total.
+    var descansoFin by remember { mutableLongStateOf(0L) }
+    var descansoTotal by remember { mutableIntStateOf(0) }
+    var restante by remember { mutableIntStateOf(0) }
+    val context = LocalContext.current
+
+    // Pantalla siempre encendida durante la sesión.
+    val view = LocalView.current
+    DisposableEffect(view) {
+        view.keepScreenOn = true
+        onDispose { view.keepScreenOn = false }
+    }
+
+    LaunchedEffect(descansoFin) {
+        if (descansoFin == 0L) return@LaunchedEffect
+        while (true) {
+            val ms = descansoFin - SystemClock.elapsedRealtime()
+            if (ms <= 0) break
+            restante = ((ms + 999) / 1000).toInt()
+            delay(250)
+        }
+        restante = 0
+        descansoFin = 0L
+        vibrar(context)
+    }
+
+    LaunchedEffect(amrap) {
+        if (amrap != null) {
+            delay(4500)
+            amrap = null
+        }
+    }
+
+    /** Al marcar una serie: arranca el descanso y, si es AMRAP, calcula el 1RM. */
+    val onHecho: (BloqueCalc, SetPlan, SetRow) -> Unit = { b, plan, row ->
+        if (b.descanso > 0) {
+            descansoTotal = b.descanso
+            descansoFin = SystemClock.elapsedRealtime() + b.descanso * 1000L
+        }
+        val total = parseD(row.peso)?.let { it + (b.pesoCorporal ?: 0.0) }
+        val reps = parseI(row.reps)
+        if (plan.amrap && total != null && reps != null && reps > 0) {
+            val e1rm = PlanCalculator.epley1rm(total, reps)
+            amrap = AmrapResultado(e1rm, mejor1rm, b.unidad ?: "")
+        }
+    }
 
     LaunchedEffect(cfg.ciclo, semana, diaIndex) {
         val bs = vm.calcularDia(diaIndex, semana, cfg)
         val existing = vm.sessionFor(cfg.ciclo, semana, diaIndex)
         val logs = existing?.let { vm.setLogsFor(it.id) }.orEmpty()
         notas = existing?.notas ?: ""
+        anterior = vm.sesionAnterior(diaIndex, cfg.ciclo, semana)
+        mejor1rm = vm.mejor1rm(diaIndex, cfg.ciclo, semana)
         rows = bs.mapIndexed { bi, b ->
             b.sets.mapIndexed { si, plan ->
                 val log = logs.firstOrNull { it.bloque == bi && it.idx == si }
@@ -148,10 +205,21 @@ fun DayScreen(
                 },
             )
         },
+        bottomBar = {
+            if (descansoFin != 0L) {
+                RestBar(
+                    restanteSeg = restante,
+                    totalSeg = descansoTotal,
+                    onMas30 = { descansoFin += 30_000; descansoTotal += 30 },
+                    onSaltar = { descansoFin = 0L; restante = 0 },
+                )
+            }
+        },
     ) { padding ->
+      Box(Modifier.fillMaxSize().padding(padding)) {
         val semanaNombre = FiveThreeOne.CYCLE.getOrNull(semana - 1)?.nombre ?: "Semana $semana"
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
+            modifier = Modifier.fillMaxSize(),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -171,7 +239,13 @@ fun DayScreen(
 
             bloques.forEachIndexed { bi, b ->
                 item {
-                    BloqueCard(b, rows.getOrNull(bi).orEmpty(), onChange)
+                    BloqueCard(
+                        b = b,
+                        rows = rows.getOrNull(bi).orEmpty(),
+                        anterior = anterior?.let { s -> s to s.logs.filter { it.bloque == bi && it.hecho } },
+                        onChange = onChange,
+                        onHecho = onHecho,
+                    )
                 }
             }
 
@@ -184,6 +258,8 @@ fun DayScreen(
                 )
             }
         }
+        amrap?.let { AmrapOverlay(it) }
+      }
     }
 }
 
@@ -217,7 +293,13 @@ private fun ProgressHeader(titulo: String, hechas: Int, total: Int, estado: Stri
 }
 
 @Composable
-private fun BloqueCard(b: BloqueCalc, rows: List<SetRow>, onChange: () -> Unit) {
+private fun BloqueCard(
+    b: BloqueCalc,
+    rows: List<SetRow>,
+    anterior: Pair<SessionWithLogs, List<SetLogEntity>>?,
+    onChange: () -> Unit,
+    onHecho: (BloqueCalc, SetPlan, SetRow) -> Unit,
+) {
     val completo = rows.isNotEmpty() && rows.all { it.hecho }
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -230,15 +312,32 @@ private fun BloqueCard(b: BloqueCalc, rows: List<SetRow>, onChange: () -> Unit) 
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            anterior?.let { (s, logs) ->
+                if (logs.isNotEmpty()) {
+                    Text(
+                        "Última vez (Mes ${s.session.ciclo} · Sem ${s.session.semana}): " +
+                            logs.sortedBy { it.idx }.joinToString(" · ") { resumenLog(it, b) },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.tertiary,
+                    )
+                }
+            }
             b.sets.forEachIndexed { i, plan ->
-                rows.getOrNull(i)?.let { SetRowView(i + 1, plan, b, it, onChange) }
+                rows.getOrNull(i)?.let { SetRowView(i + 1, plan, b, it, onChange, onHecho) }
             }
         }
     }
 }
 
 @Composable
-private fun SetRowView(numero: Int, plan: SetPlan, b: BloqueCalc, row: SetRow, onChange: () -> Unit) {
+private fun SetRowView(
+    numero: Int,
+    plan: SetPlan,
+    b: BloqueCalc,
+    row: SetRow,
+    onChange: () -> Unit,
+    onHecho: (BloqueCalc, SetPlan, SetRow) -> Unit,
+) {
     val haptic = LocalHapticFeedback.current
     val fondo = if (row.hecho) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
     else MaterialTheme.colorScheme.surfaceContainerHigh
@@ -310,7 +409,10 @@ private fun SetRowView(numero: Int, plan: SetPlan, b: BloqueCalc, row: SetRow, o
                 checked = row.hecho,
                 onCheckedChange = {
                     row.hecho = it
-                    if (it) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    if (it) {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onHecho(b, plan, row)
+                    }
                     onChange()
                 },
                 shape = CircleShape,
@@ -321,7 +423,23 @@ private fun SetRowView(numero: Int, plan: SetPlan, b: BloqueCalc, row: SetRow, o
                 Icon(Icons.Filled.Check, contentDescription = "Serie hecha")
             }
         }
+        val total = parseD(row.peso)
+        if (b.barra != null && b.unidad != null && total != null) {
+            PlateStrip(total, b.barra, b.unidad)
+        }
     }
+}
+
+/** "45×8", "+5×5" (lastre), "60 min" (cardio) para la línea de "Última vez". */
+private fun resumenLog(log: SetLogEntity, b: BloqueCalc): String {
+    val reps = log.reps?.toString() ?: "-"
+    if (b.cardio) return "$reps min"
+    val peso = log.pesoUsado ?: return "×$reps"
+    val bw = b.pesoCorporal
+    return if (bw != null) {
+        val lastre = peso - bw
+        "${if (lastre >= 0) "+" else ""}${fmtNum(lastre)}×$reps"
+    } else "${fmtNum(peso)}×$reps"
 }
 
 /** − valor + : los botones suman [paso]; el número también se puede escribir. */
@@ -398,5 +516,8 @@ private fun buildLogs(bloques: List<BloqueCalc>, rows: List<List<SetRow>>): List
         }
     }
 
-private fun fmtNum(x: Double): String =
-    if (x == kotlin.math.floor(x)) x.toLong().toString() else x.toString()
+/** Redondea a centésimas: restar el peso corporal no deja decimales sueltos. */
+private fun fmtNum(x: Double): String {
+    val r = Math.round(x * 100) / 100.0
+    return if (r == kotlin.math.floor(r)) r.toLong().toString() else r.toString()
+}

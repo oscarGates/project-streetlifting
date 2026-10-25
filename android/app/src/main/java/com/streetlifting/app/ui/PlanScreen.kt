@@ -1,17 +1,14 @@
 package com.streetlifting.app.ui
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.OutlinedButton
@@ -19,8 +16,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -50,27 +45,16 @@ import com.streetlifting.app.data.LiftEntity
 fun PlanScreen(
     vm: AppViewModel,
     onOpenDay: (semana: Int, diaIndex: Int) -> Unit,
-    onOpenHistory: () -> Unit,
-    onOpenSettings: () -> Unit,
 ) {
     val config by vm.config.collectAsStateSafe()
     val lifts by vm.lifts.collectAsStateSafe()
     val accesorios by vm.accesorios.collectAsStateSafe()
+    val semanaActual by vm.semanaActual.collectAsStateSafe()
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Plan 5/3/1") },
-                actions = {
-                    IconButton(onClick = onOpenHistory) {
-                        Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Historial")
-                    }
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Filled.Settings, contentDescription = "Ajustes")
-                    }
-                },
-            )
-        },
+        topBar = { TopAppBar(title = { Text("Plan 5/3/1") }) },
+        // La barra de navegación inferior ya reserva su espacio.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { padding ->
         val cfg = config
         if (cfg == null) {
@@ -83,8 +67,10 @@ fun PlanScreen(
         }
 
         val maxSemanas = if (cfg.incluirDescarga) 4 else 3
-        var semana by rememberSaveable { mutableIntStateOf(1) }
-        if (semana > maxSemanas) semana = maxSemanas
+        // 0 = sin elegir: se muestra la semana que toca según el calendario.
+        var elegida by rememberSaveable { mutableIntStateOf(0) }
+        val hoySemana = semanaActual.coerceIn(1, maxSemanas)
+        val semana = if (elegida == 0) hoySemana else elegida.coerceAtMost(maxSemanas)
 
         val dias by produceState<List<List<BloqueCalc>>>(emptyList(), cfg, lifts, accesorios, semana) {
             value = Program.DIAS.indices.map { vm.calcularDia(it, semana, cfg) }
@@ -105,7 +91,7 @@ fun PlanScreen(
                         accesorios = accesorios,
                         onConfirm = {
                             vm.avanzarCiclo()
-                            semana = 1
+                            elegida = 0
                             confirmar = false
                         },
                         onDismiss = { confirmar = false },
@@ -117,10 +103,10 @@ fun PlanScreen(
                 Text("Semana", style = MaterialTheme.typography.titleMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     (1..maxSemanas).forEach { w ->
-                        val label = if (w == 4) "Descarga" else "Sem $w"
+                        val label = (if (w == 4) "Descarga" else "Sem $w") + if (w == hoySemana) " •" else ""
                         FilterChip(
                             selected = semana == w,
-                            onClick = { semana = w },
+                            onClick = { elegida = w },
                             label = { Text(label) },
                         )
                     }
@@ -231,31 +217,4 @@ private fun AvanzarCicloDialog(
         confirmButton = { TextButton(onClick = onConfirm) { Text("Avanzar") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
     )
-}
-
-@Composable
-private fun DayCard(
-    titulo: String,
-    bloques: List<BloqueCalc>,
-    onClick: () -> Unit,
-) {
-    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(titulo, style = MaterialTheme.typography.titleMedium)
-            bloques.forEach { b ->
-                Text(b.titulo, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                if (b.series531.isNotEmpty()) {
-                    b.series531.forEach { s ->
-                        val reps = "${s.reps}${if (s.amrap) "+" else ""}"
-                        Text(
-                            "${s.pct}% x$reps · ${s.pesoTexto}",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                } else {
-                    Text(b.prescripcion, style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-    }
 }

@@ -115,6 +115,14 @@ interface AppDao {
     @Query("SELECT * FROM set_logs WHERE sessionId = :sessionId ORDER BY bloque ASC, idx ASC")
     suspend fun setLogsFor(sessionId: Long): List<SetLogEntity>
 
+    /** Sesiones del mismo día del plan, salvo la de (ciclo, semana); la más reciente primero. */
+    @Transaction
+    @Query(
+        "SELECT * FROM sessions WHERE diaIndex = :diaIndex " +
+            "AND NOT (ciclo = :ciclo AND semana = :semana) ORDER BY fechaEpoch DESC"
+    )
+    suspend fun otrasSesionesDelDia(diaIndex: Int, ciclo: Int, semana: Int): List<SessionWithLogs>
+
     @Transaction
     @Query("SELECT * FROM sessions ORDER BY fechaEpoch DESC")
     fun sessionsWithLogsFlow(): Flow<List<SessionWithLogs>>

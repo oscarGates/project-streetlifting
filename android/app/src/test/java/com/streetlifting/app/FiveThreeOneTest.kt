@@ -1,6 +1,8 @@
 package com.streetlifting.app
 
 import com.streetlifting.app.core.AccesorioEstado
+import com.streetlifting.app.core.Calendario
+import com.streetlifting.app.core.Discos
 import com.streetlifting.app.core.FiveThreeOne
 import com.streetlifting.app.core.MaxInput
 import com.streetlifting.app.core.PlanCalculator
@@ -8,6 +10,9 @@ import com.streetlifting.app.core.Program
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.ZoneOffset
 
 /**
  * Verifica que el motor reproduce "Plan 5-3-1 mensual por movimiento.xlsx"
@@ -162,5 +167,38 @@ class FiveThreeOneTest {
     @Test
     fun epley() {
         assertEquals(120.0, PlanCalculator.epley1rm(100.0, 6), 0.0001)
+    }
+
+    @Test
+    fun discosPorLado() {
+        // Sentadilla 95 kg con barra de 20: 37.5 por lado = 25 + 10 + 2.5.
+        assertEquals(listOf(25.0, 10.0, 2.5), Discos.porLado(95.0, 20.0, "kg"))
+        assertEquals(listOf(20.0, 1.25), Discos.porLado(62.5, 20.0, "kg"))
+        assertEquals(emptyList<Double>(), Discos.porLado(20.0, 20.0, "kg"))
+        assertEquals(listOf(45.0, 10.0), Discos.porLado(155.0, 45.0, "lbs"))
+    }
+
+    @Test
+    fun diaDelPlan() {
+        assertEquals(0, Calendario.diaDelPlan(DayOfWeek.MONDAY))
+        assertEquals(4, Calendario.diaDelPlan(DayOfWeek.FRIDAY))
+        assertEquals(null, Calendario.diaDelPlan(DayOfWeek.SATURDAY))
+        assertEquals(0, Calendario.proximoDia(DayOfWeek.SUNDAY))
+    }
+
+    @Test
+    fun semanaActualPorCalendario() {
+        val z = ZoneOffset.UTC
+        fun ms(d: LocalDate) = d.atStartOfDay(z).toInstant().toEpochMilli()
+        val lun = LocalDate.of(2026, 10, 19) // lunes
+        assertEquals(1, Calendario.semanaActual(emptyList(), lun, z, 4))
+        // Misma semana de calendario: sigue en la semana 1.
+        assertEquals(1, Calendario.semanaActual(listOf(1 to ms(lun)), lun.plusDays(3), z, 4))
+        // Lunes siguiente: pasa a la semana 2.
+        assertEquals(2, Calendario.semanaActual(listOf(1 to ms(lun)), lun.plusDays(7), z, 4))
+        // Si se salta una semana no avanza de más.
+        assertEquals(2, Calendario.semanaActual(listOf(1 to ms(lun)), lun.plusDays(21), z, 4))
+        // Tras la descarga: 5 = mes terminado.
+        assertEquals(5, Calendario.semanaActual(listOf(4 to ms(lun)), lun.plusDays(7), z, 4))
     }
 }

@@ -3,23 +3,22 @@ package com.streetlifting.app.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -29,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.streetlifting.app.core.Program
+import kotlinx.coroutines.launch
 import com.streetlifting.app.data.AccesorioEntity
 import com.streetlifting.app.data.ConfigEntity
 import com.streetlifting.app.data.LiftEntity
@@ -72,7 +73,7 @@ private class AccState(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
+fun SettingsScreen(vm: AppViewModel) {
     val config by vm.config.collectAsStateSafe()
     val lifts by vm.lifts.collectAsStateSafe()
     val accesorios by vm.accesorios.collectAsStateSafe()
@@ -84,6 +85,8 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
     var ciclo by remember { mutableStateOf("1") }
     var pesoBarra by remember { mutableStateOf("") }
     var loaded by remember { mutableStateOf(false) }
+    val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
     val liftStates = remember { mutableStateListOf<LiftState>() }
     val accStates = remember { mutableStateListOf<AccState>() }
 
@@ -123,13 +126,10 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
         topBar = {
             TopAppBar(
                 title = { Text("Ajustes y maxes") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
-                    }
-                },
             )
         },
+        snackbarHost = { SnackbarHost(snackbar) },
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
@@ -266,7 +266,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
                                 )
                             }
                         )
-                        onBack()
+                        scope.launch { snackbar.showSnackbar("Ajustes guardados ✓") }
                     },
                 ) { Text("Guardar") }
             }

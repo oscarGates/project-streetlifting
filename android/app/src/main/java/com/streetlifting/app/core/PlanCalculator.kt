@@ -87,10 +87,18 @@ data class BloqueCalc(
     val paso: Double,
     /** Peso corporal (en [unidad]) si es lastrado: se edita el lastre. */
     val pesoCorporal: Double? = null,
+    /** Peso de la barra si es un levantamiento con barra (para los discos). */
+    val barra: Double? = null,
+    /** Descanso sugerido tras cada serie, en segundos (0 = sin temporizador). */
+    val descanso: Int = 0,
     val cardio: Boolean = false,
 )
 
 object PlanCalculator {
+
+    const val DESCANSO_PRINCIPAL = 180
+    const val DESCANSO_SECUNDARIO = 120
+    const val DESCANSO_ACCESORIO = 90
 
     /** Parámetros globales que afectan a la carga. */
     data class Entorno(
@@ -194,6 +202,8 @@ object PlanCalculator {
                     unidad = max.unit,
                     paso = FiveThreeOne.incremento(max.unit, env.micro),
                     pesoCorporal = bwDe(max, env),
+                    barra = barraDe(max, env),
+                    descanso = DESCANSO_PRINCIPAL,
                 )
             }
             is Bloque.Secundario -> {
@@ -213,6 +223,8 @@ object PlanCalculator {
                     unidad = max.unit,
                     paso = FiveThreeOne.incremento(max.unit, env.micro),
                     pesoCorporal = bwDe(max, env),
+                    barra = barraDe(max, env),
+                    descanso = DESCANSO_SECUNDARIO,
                 )
             }
             is Bloque.Accesorio -> {
@@ -229,6 +241,7 @@ object PlanCalculator {
                     sets = List(a.series) { SetPlan("Serie ${it + 1}", a.peso, a.reps) },
                     unidad = d.unidad.takeIf { a.peso != null },
                     paso = pasoAccesorio(d.unidad),
+                    descanso = DESCANSO_ACCESORIO,
                 )
             }
             is Bloque.Cardio -> BloqueCalc(
@@ -242,6 +255,9 @@ object PlanCalculator {
             )
         }
     }
+
+    private fun barraDe(max: MaxInput, env: Entorno): Double? =
+        if (max.esBw) null else env.pesoBarra ?: Program.pesoBarra(max.unit)
 
     private fun bwDe(max: MaxInput, env: Entorno): Double? =
         if (max.esBw) convertir(env.pesoCorporal, env.pcUnit, max.unit) else null
